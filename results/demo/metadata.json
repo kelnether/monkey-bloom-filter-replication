@@ -1,0 +1,19 @@
+{
+  "python": "3.12.6 (v3.12.6:a4a2d2b0d85, Sep  6 2024, 16:08:03) [Clang 13.0.0 (clang-1300.0.29.30)]",
+  "platform": "macOS-15.7.7-arm64-arm-64bit",
+  "machine": "arm64",
+  "upstream_commit": "495e71a94559a845c76019740341745900a87666",
+  "core_file_sha256": {
+    "__init__.py": "ecf23dc90601b502355482a2b06c1a05598b473442e19e9137116f8b4522e136",
+    "__main__.py": "7843c6ecf88dedacfde4f6afbfb89cdcddf9f49584676a814bc5c804f7b70848",
+    "allocation.py": "9ee4fb840b845bcfdc8f7bdc9b1d5cc684751e6fbd069aa7325e3f46b7e073b3",
+    "bloom.py": "5f19dc7c2c55e85fd3353ab5c318e8705604d0c19941fefca80bf04565db3b64",
+    "experiments.py": "8de5b85fd07ed575738a24fc0aaf62683573f97c8d719f55cb3576088a0f6c61",
+    "model.py": "50af33a0cc07a651c5e275bfb8318c9853b9f46f3965b6751d5b7ac337469374",
+    "plotting.py": "3597ca10b36b4ad71c7affad539166422f12c1c3b04a079be67d47e64d8d317d",
+    "store.py": "2b0ec575965c611367344af9525b325153540ee08093af8a8b15b168b2c49de1",
+    "upstream.py": "913d10287fab2cfbabe1f0f62e73e2b1b36b54043c7a9a49c1feb412477862dd"
+  },
+  "measurement": "in-memory logical block probes, not physical I/O",
+  "memory": "filter bytearray payload only; excludes data and Python object overhead"
+}

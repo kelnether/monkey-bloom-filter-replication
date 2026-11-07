@@ -1,0 +1,23 @@
+# Local Python environment and generated caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mplconfig/
+.cache/
+
+# IDE and macOS metadata
+.idea/
+.vscode/
+.DS_Store
+
+# Local credentials and configuration
+.env
+.env.*
+!.env.example
+
+# Keep the two existing reproducibility runs; ignore future runs by default
+/results/*
+!/results/demo/
+!/results/migration_check/

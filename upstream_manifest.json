@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/fiidalgo/predictive-lsm-trees",
+  "commit": "495e71a94559a845c76019740341745900a87666",
+  "files": {
+    "lsm/__init__.py": "9994acda8c0ec5eda5db5c884005a0cc40619f3d9f2658c519a4e833dad12696",
+    "lsm/bloom.py": "a9b2f4819c806bbf61268e49146d5d27860450d0665ba511b68bb99e6320e922",
+    "lsm/buffer.py": "2cf2a0c4c00e46bb9953a924ad85ec998363751c8152773551c1c83ced7ad23a",
+    "lsm/learned.py": "916ed0a65fe048fe45811fd5563990b58df0b40b691d4385a2fa081f2dccbd5a",
+    "lsm/learned_bloom.py": "398e8f73579607feac916d521d592597e06c7760b098ac93de9f7b346ca593af",
+    "lsm/run.py": "48d57ad2f43d66473f844c8445a88b4b5207f25c7b5d15fd4ed901a2c5b54e0c",
+    "lsm/traditional.py": "1515d218c3ee34df52505e94aedf1c456eee5545b67ede98a990cceabe8e52db",
+    "lsm/utils.py": "dc896b35dc5709b9749c60aec44ae36e7569e97ea50cf0fd813c516f541e6de0"
+  }
+}

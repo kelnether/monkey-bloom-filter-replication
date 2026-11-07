@@ -1,0 +1,28 @@
+{
+  "experiment": {
+    "entries": 20000,
+    "levels": 4,
+    "ratio": 4,
+    "bits_per_key": 5,
+    "queries": 5000,
+    "miss_fraction": 1.0,
+    "entries_per_page": 128
+  },
+  "seeds": [1, 2, 3],
+  "sweeps": {
+    "bits_per_key": [0, 2, 5, 8, 10],
+    "ratio": [2, 4, 10],
+    "miss_fraction": [0, 0.5, 1],
+    "levels": [2, 4, 6]
+  },
+  "model_search": {
+    "entries": 100000,
+    "entry_bytes": 128,
+    "memory_bytes": 128000,
+    "page_bytes": 4096,
+    "ratios": [2, 4, 8, 10],
+    "buffer_fractions": [0.05, 0.2, 0.5],
+    "write_fractions": [0.1, 0.5, 0.9],
+    "miss_fraction_among_reads": 0.5
+  }
+}
