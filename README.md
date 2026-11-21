@@ -1,6 +1,6 @@
 # Monkey: Optimizing Bloom Filter Memory Allocation
 
-**DSC5003 · Track 2 · Python 核心算法复现**
+**DSC5003 · Track 2 · Python 核心算法复现: DENG Tianyu; XIA Tianquan; ZHANG Yue; LI Wenhao; ZHAO Yining**
 
 在相同 Bloom filter 内存预算下，比较统一 bits/key 和 Monkey 分层分配，观察误报率、逻辑页访问次数及成本模型预测的变化。主复现论文为 [Monkey: Optimal Navigable Key-Value Store（SIGMOD 2017）](https://doi.org/10.1145/3035918.3064054)。
 
