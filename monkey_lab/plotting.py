@@ -21,9 +21,14 @@ def make_report(directory):
     plt.rcParams.update({'font.size':10, 'axes.spines.top':False, 'axes.spines.right':False,
                          'axes.titleweight':'bold','figure.facecolor':'#f8fafc','axes.facecolor':'white'})
     colors = {'uniform':'#64748b','monkey':'#087e8b'}
+    model_colors = colors.copy()
+    if config.get('include_appendix_c'):
+        colors['monkey_appendix_c'] = '#b65324'
 
     def select(strategy, variable):
         dimensions = ['entries','levels','ratio','bits_per_key','requested_miss_fraction']
+        if 'queries' in rows[0]:
+            dimensions.append('queries')
         return sorted([r for r in rows if r['strategy']==strategy and all(
             float(r[k])==base['miss_fraction' if k=='requested_miss_fraction' else k]
             for k in dimensions if k!=variable)], key=lambda r: float(r[variable]))
@@ -31,10 +36,14 @@ def make_report(directory):
     def plot_accesses(ax, variable, title, xlabel):
         for strategy, color in colors.items():
             subset = select(strategy, variable)
+            appendix_c = strategy == 'monkey_appendix_c'
             ax.errorbar([float(r[variable]) for r in subset],
                         [float(r['measured_blocks_mean']) for r in subset],
                         yerr=[float(r['measured_blocks_sd']) for r in subset],
-                        marker='o', capsize=4, color=color, label=strategy)
+                        marker='s' if appendix_c else 'o',
+                        linestyle='--' if appendix_c else '-',
+                        markerfacecolor='none' if appendix_c else color,
+                        capsize=4, color=color, label=strategy)
         ax.set(title=title, xlabel=xlabel, ylabel='Logical block accesses / query')
         ax.grid(alpha=.2)
         ax.legend()
@@ -52,21 +61,36 @@ def make_report(directory):
         fig.savefig(figures/f'benchmarks.{suffix}',dpi=160)
     plt.close(fig)
 
-    level_counts = [int(row['levels']) for row in select('uniform', 'levels')]
-    level_section = ''
-    if len(level_counts) > 1:
+    def save_access_chart(variable, title, xlabel, filename):
+        ticks = [int(row[variable]) for row in select('uniform', variable)]
+        if len(ticks) < 2:
+            return False
         fig, ax = plt.subplots(figsize=(7.5, 4.8), layout='constrained')
-        plot_accesses(ax, 'levels', 'Effect of number of levels', 'Number of levels')
-        ax.set(xticks=level_counts, ylim=(0, None))
+        plot_accesses(ax, variable, title, xlabel)
+        ax.set(xticks=ticks, ylim=(0, None))
         for suffix in ('png', 'svg'):
-            fig.savefig(figures/f'level_count.{suffix}', dpi=160)
+            fig.savefig(figures/f'{filename}.{suffix}', dpi=160)
         plt.close(fig)
+        return True
+
+    level_section = ''
+    if save_access_chart('levels', 'Effect of number of levels', 'Number of levels', 'level_count'):
         level_section = (
             '<h2>层数对查询的影响</h2>'
             f'<p>只改变层数。固定键数 {base["entries"]:,}、层大小比例 T={base["ratio"]}、'
             f'平均 {base["bits_per_key"]} bits/key 和未命中比例 {base["miss_fraction"]:.0%}。'
             '每个点为随机种子间的均值，误差线为一个样本标准差。</p>'
-            '<img class="half" src="figures/level_count.png" alt="不同层数下两种分配策略的平均逻辑页访问数">'
+            '<img class="half" src="figures/level_count.png" alt="各分配策略随层数变化的平均逻辑页访问数">'
+        )
+
+    query_section = ''
+    if 'queries' in rows[0] and save_access_chart(
+            'queries', 'Fixed data | effect of query count', 'Unsuccessful queries per seed', 'query_count'):
+        query_section = (
+            '<h2>固定数据的查询量对照</h2>'
+            '<p>同一个种子下固定键、层布局和哈希盐。较短的查询列表是完整列表的前缀。'
+            '误差线为不同种子的样本标准差。</p>'
+            '<img class="half" src="figures/query_count.png" alt="固定数据下不同查询量的平均逻辑页访问数">'
         )
 
     fig,ax = plt.subplots(figsize=(7.5,4.8),layout='constrained')
@@ -84,7 +108,7 @@ def make_report(directory):
     plt.close(fig)
 
     fig,ax = plt.subplots(figsize=(7.5,4.8),layout='constrained')
-    for strategy in colors:
+    for strategy in model_colors:
         subset = sorted([r for r in best if r['strategy']==strategy],key=lambda r:r['write_fraction'])
         ax.plot([r['write_fraction'] for r in subset],[r['theta'] for r in subset],
                 'o-',color=colors[strategy],label=f'{strategy}: best in grid')
@@ -109,10 +133,11 @@ def make_report(directory):
 <div class="cards"><div class="card">基线平均访问<strong class="number">{baseline:.5f}</strong>逻辑数据块 / 查询</div>
 <div class="card">Monkey 平均访问<strong class="number">{optimized:.5f}</strong>逻辑数据块 / 查询</div>
 <div class="card">本次基础场景减少<strong class="number">{improvement:.1%}</strong>相对统一 bits/key</div></div>
-<p>基础场景：{base['entries']:,} 个键，{base['levels']} 层，T={base['ratio']}，平均 {base['bits_per_key']} bits/key，未命中比例 {base['miss_fraction']:.0%}。随机种子：{html.escape(str(config['seeds']))}。</p>
-<p class="note">实测对象为内存中的静态数据布局和真实过滤器。逻辑块访问不是物理磁盘 I/O；位数组载荷不是进程总内存。参数搜索结果来自理论模型，没有实测 compaction 或系统吞吐量。当前分配器求解论文连续优化目标，不是附录 C 的逐行实现。</p>
-<h2>对照实验</h2><p>每个种子的两种策略共享数据、查询、哈希盐和总过滤器预算。误差线为跨种子的样本标准差。</p><img src="figures/benchmarks.png" alt="不同内存预算、层级比例和未命中率下的实测访问次数">
+<p>基础场景：{base['entries']:,} 个键，{base['levels']} 层，T={base['ratio']}，平均 {base['bits_per_key']} bits/key，每个种子 {base['queries']:,} 次查询，未命中比例 {base['miss_fraction']:.0%}。随机种子：{html.escape(str(config['seeds']))}。</p>
+<p class="note">实测对象为内存中的静态数据布局和真实过滤器，指标为逻辑块访问数和过滤器位数组载荷。参数搜索使用理论成本。monkey 通过二分求解连续优化目标；monkey_appendix_c 在启用时使用附录 C 的迭代转移。</p>
+<h2>对照实验</h2><p>每个种子的各策略共享数据、查询、哈希盐和总过滤器预算。误差线为跨种子的样本标准差。</p><img src="figures/benchmarks.png" alt="不同内存预算、层级比例和未命中率下的实测访问次数">
 {level_section}
+{query_section}
 <h2>理论与实测核对</h2><p>对完整的未命中键集合逐层测量误报率，再求和。混合负载的未命中查询取自其中。整数哈希数量模型与连续分配模型分别保存在 CSV 中。</p><img class="half" src="figures/model_check.png" alt="模型与实测比较">
 <h2>参数搜索：仅模型预测</h2><p>枚举合并策略、T 和缓冲区比例；展示给定网格内的最低加权成本。不是全设计空间的最优性证明。调优内存预算仅包含 buffer 和 filters；命中成本按最深 run 的保守位置估计。</p><img class="half" src="figures/parameter_search.png" alt="不同写比例下的理论最优网格配置">
 <div class="scroll"><table><tr><th>写比例</th><th>分配</th><th>合并策略</th><th>T</th><th>缓冲区比例</th><th>层数</th><th>预测成本</th></tr>{table}</table></div>

@@ -4,7 +4,7 @@
 
 Niv Dayan, Manos Athanassoulis, Stratos Idreos. **Monkey: Optimal Navigable Key-Value Store**. SIGMOD 2017. DOI: [10.1145/3035918.3064054](https://doi.org/10.1145/3035918.3064054).
 
-核心依据：第 4.1 节过滤器分配目标、第 4.2 节成本模型、附录 B 的分配推导。当前分配器使用 KKT 连续解的二分数值求解，而不是附录 C 的迭代转移算法。当前参数搜索使用有限网格枚举，而不是附录 D 的搜索程序。
+核心依据包括第 4.1 节过滤器分配目标、第 4.2 节成本模型、附录 B 的分配推导，以及附录 C 的 Algorithms 1–3。默认 `monkey` 使用 KKT 连续解的二分法。扩展策略 `monkey_appendix_c` 根据论文重新实现迭代转移，采用整数位步长并共用整字节舍入。参数搜索使用有限网格。[论文附录 C](https://nivdayan.github.io/monkeykeyvaluestore.pdf#page=15) · [扩展实验](docs/ROBUSTNESS.md)
 
 ## 用户指定参考项目
 

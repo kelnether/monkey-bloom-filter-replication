@@ -27,6 +27,18 @@ class AllocationTests(unittest.TestCase):
         oracle=min(model_sum(sizes,[a,b,budget-a-b]) for a,b in itertools.product(range(budget+1),repeat=2) if a+b<=budget)
         self.assertAlmostEqual(model_sum(sizes,allocate(sizes,budget)),oracle,places=10)
 
+    def test_appendix_c_transfer_matches_small_oracle(self):
+        sizes = [5, 20, 80]
+        budget = 12
+        result = allocate(sizes, budget, 'monkey_appendix_c')
+        optimum = min(
+            model_sum(sizes, [a, b, budget - a - b])
+            for a in range(budget+1) for b in range(budget-a+1))
+        self.assertEqual(sum(result), budget)
+        self.assertTrue(all(type(value) is int and value >= 0 for value in result))
+        self.assertAlmostEqual(model_sum(sizes, result), optimum)
+        self.assertEqual(allocate(sizes, 0, 'monkey_appendix_c'), [0, 0, 0])
+
     def test_large_budget_kkt_proportionality(self):
         sizes=[1000,10000,100000]
         a=allocate(sizes,138750)
@@ -80,6 +92,23 @@ class FilterAndStoreTests(unittest.TestCase):
 
 
 class ModelAndExperimentTests(unittest.TestCase):
+    def test_query_count_keeps_data_and_query_prefix_fixed(self):
+        base = dict(entries=120, levels=3, ratio=3, bits_per_key=5,
+                    miss_fraction=1, entries_per_page=8)
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            (out/'datasets').mkdir()
+            small, small_levels = run_case(dict(base, queries=50), 42, out, query_pool_size=200)
+            large, large_levels = run_case(dict(base, queries=200), 42, out, query_pool_size=200)
+            data = [json.loads((out/'datasets'/f"{rows[0]['case']}.json").read_text())
+                    for rows in (small, large)]
+            self.assertEqual(data[0]['levels'], data[1]['levels'])
+            self.assertEqual(data[0]['queries'], data[1]['queries'][:50])
+            self.assertEqual(data[0]['absent_probes'], data[1]['absent_probes'][:50])
+            for field in ('payload_bytes', 'hash_count', 'predicted_fpr'):
+                self.assertEqual([r[field] for r in small_levels], [r[field] for r in large_levels])
+            self.assertEqual({r['queries'] for r in aggregate(small+large)}, {50, 200})
+
     def test_sweep_deduplicates_numeric_equivalents(self):
         config={'experiment':{'miss_fraction':1.0,'bits_per_key':5},
                 'sweeps':{'miss_fraction':[0,.5,1],'bits_per_key':[5.0,10]}}

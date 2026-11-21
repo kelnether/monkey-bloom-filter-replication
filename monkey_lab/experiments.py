@@ -34,17 +34,27 @@ def workload(total, sizes, query_count, miss_fraction, seed):
     return levels, queries, absent
 
 
-def run_case(config, seed, out_dir):
+def run_case(config, seed, out_dir, *, query_pool_size=None, include_appendix_c=False):
     total, ratio, count = config['entries'], config['ratio'], config['levels']
     sizes = geometric_sizes(total, count, ratio)
-    levels, queries, absent = workload(total, sizes, config['queries'], config['miss_fraction'], seed)
+    query_count = config['queries']
+    levels, queries, absent = workload(
+        total, sizes, query_pool_size or query_count, config['miss_fraction'], seed)
     signature = f"n{total}_l{count}_t{ratio}_b{config['bits_per_key']:g}_m{config['miss_fraction']:g}_s{seed}"
+    if query_pool_size is not None:
+        # The pool is all misses. Use the same prefix for lookup and FPR measurement.
+        queries = queries[:query_count]
+        absent = [key for key, _ in queries]
+        signature += f'_q{query_count}'
     budget = math.floor(total*config['bits_per_key']/8)
     serialized = json.dumps({'levels': levels, 'queries': queries, 'absent_probes': absent}, separators=(',',':'))
     digest = hashlib.sha256(serialized.encode()).hexdigest()
     (out_dir/'datasets'/f'{signature}.json').write_text(serialized)
     rows, detail = [], []
-    for strategy in ('uniform', 'monkey'):
+    strategies = ('uniform', 'monkey')
+    if include_appendix_c:
+        strategies += ('monkey_appendix_c',)
+    for strategy in strategies:
         start = time.perf_counter()
         store = StaticLSM(levels, budget, strategy, seed, config['entries_per_page'])
         build_seconds = time.perf_counter()-start
@@ -104,6 +114,8 @@ def csv_write(path, rows):
 
 def aggregate(rows):
     grouping = ['strategy','entries','levels','ratio','bits_per_key','requested_miss_fraction']
+    if len({row['queries'] for row in rows}) > 1:
+        grouping.append('queries')
     groups = defaultdict(list)
     for row in rows:
         groups[tuple(row[k] for k in grouping)].append(row)
@@ -122,8 +134,11 @@ def aggregate(rows):
 def build_cases(config):
     base = config['experiment']
     cases = [dict(base)]
+    sweep_fields = {'bits_per_key', 'ratio', 'miss_fraction', 'levels'}
+    if 'query_pool_size' in config:
+        sweep_fields.add('queries')
     for name, values in config['sweeps'].items():
-        if name not in ('bits_per_key','ratio','miss_fraction','levels'):
+        if name not in sweep_fields:
             raise ValueError('unknown sweep '+name)
         cases.extend(dict(base, **{name:value}) for value in values)
     # Numeric equality matters: JSON 1 and 1.0 describe the same scenario.
@@ -138,6 +153,15 @@ def run_all(config_path, output):
     if not config['seeds'] or len(set(config['seeds'])) != len(config['seeds']):
         raise ValueError('provide distinct random seeds')
     cases = build_cases(config)
+    query_pool_size = config.get('query_pool_size')
+    if 'query_pool_size' in config:
+        if type(query_pool_size) is not int or any(
+                type(c['queries']) is not int or not 1 <= c['queries'] <= query_pool_size
+                or c['miss_fraction'] != 1 for c in cases):
+            raise ValueError('query_pool_size requires integer query counts within the pool and all-miss workloads')
+    include_appendix_c = config.get('include_appendix_c', False)
+    if type(include_appendix_c) is not bool:
+        raise ValueError('include_appendix_c must be a boolean')
     for c in cases:
         if c['bits_per_key'] < 0 or not math.isfinite(c['bits_per_key']) or not 0<=c['miss_fraction']<=1:
             raise ValueError('invalid memory or miss fraction')
@@ -150,7 +174,8 @@ def run_all(config_path, output):
     records, detail = [], []
     for i,c in enumerate(cases):
         for seed in config['seeds']:
-            rows, levels = run_case(c,seed,output)
+            rows, levels = run_case(
+                c, seed, output, query_pool_size=query_pool_size, include_appendix_c=include_appendix_c)
             records.extend(rows)
             detail.extend(levels)
         print(f'Completed scenario {i+1}/{len(cases)}: {c}',flush=True)
