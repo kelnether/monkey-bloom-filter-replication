@@ -28,26 +28,46 @@ def make_report(directory):
             float(r[k])==base['miss_fraction' if k=='requested_miss_fraction' else k]
             for k in dimensions if k!=variable)], key=lambda r: float(r[variable]))
 
+    def plot_accesses(ax, variable, title, xlabel):
+        for strategy, color in colors.items():
+            subset = select(strategy, variable)
+            ax.errorbar([float(r[variable]) for r in subset],
+                        [float(r['measured_blocks_mean']) for r in subset],
+                        yerr=[float(r['measured_blocks_sd']) for r in subset],
+                        marker='o', capsize=4, color=color, label=strategy)
+        ax.set(title=title, xlabel=xlabel, ylabel='Logical block accesses / query')
+        ax.grid(alpha=.2)
+        ax.legend()
+
     fig, axes = plt.subplots(1,3,figsize=(15,4.6),layout='constrained')
     for ax, variable, title, xlabel in zip(axes,
             ['bits_per_key','ratio','requested_miss_fraction'],
             ['A | Filter memory budget','B | Level-size ratio','C | Unsuccessful lookups'],
             ['Average filter bits / key','Level-size ratio T','Fraction of unsuccessful lookups']):
-        for strategy in colors:
-            subset = select(strategy, variable)
-            ax.errorbar([float(r[variable]) for r in subset],
-                        [float(r['measured_blocks_mean']) for r in subset],
-                        yerr=[float(r['measured_blocks_sd']) for r in subset],
-                        marker='o',capsize=4,color=colors[strategy],label=strategy)
-        ax.set(title=title,xlabel=xlabel,ylabel='Logical block accesses / query')
-        ax.grid(alpha=.2)
-        ax.legend()
+        plot_accesses(ax, variable, title, xlabel)
         if variable=='bits_per_key':
             ax.set_yscale('symlog',linthresh=.02)
     fig.suptitle('Monkey static replication | measured means +/- one sample SD',fontsize=15)
     for suffix in ('png','svg'):
         fig.savefig(figures/f'benchmarks.{suffix}',dpi=160)
     plt.close(fig)
+
+    level_counts = [int(row['levels']) for row in select('uniform', 'levels')]
+    level_section = ''
+    if len(level_counts) > 1:
+        fig, ax = plt.subplots(figsize=(7.5, 4.8), layout='constrained')
+        plot_accesses(ax, 'levels', 'Effect of number of levels', 'Number of levels')
+        ax.set(xticks=level_counts, ylim=(0, None))
+        for suffix in ('png', 'svg'):
+            fig.savefig(figures/f'level_count.{suffix}', dpi=160)
+        plt.close(fig)
+        level_section = (
+            '<h2>层数对查询的影响</h2>'
+            f'<p>只改变层数。固定键数 {base["entries"]:,}、层大小比例 T={base["ratio"]}、'
+            f'平均 {base["bits_per_key"]} bits/key 和未命中比例 {base["miss_fraction"]:.0%}。'
+            '每个点为随机种子间的均值，误差线为一个样本标准差。</p>'
+            '<img class="half" src="figures/level_count.png" alt="不同层数下两种分配策略的平均逻辑页访问数">'
+        )
 
     fig,ax = plt.subplots(figsize=(7.5,4.8),layout='constrained')
     for strategy in colors:
@@ -92,7 +112,8 @@ def make_report(directory):
 <p>基础场景：{base['entries']:,} 个键，{base['levels']} 层，T={base['ratio']}，平均 {base['bits_per_key']} bits/key，未命中比例 {base['miss_fraction']:.0%}。随机种子：{html.escape(str(config['seeds']))}。</p>
 <p class="note">实测对象为内存中的静态数据布局和真实过滤器。逻辑块访问不是物理磁盘 I/O；位数组载荷不是进程总内存。参数搜索结果来自理论模型，没有实测 compaction 或系统吞吐量。当前分配器求解论文连续优化目标，不是附录 C 的逐行实现。</p>
 <h2>对照实验</h2><p>每个种子的两种策略共享数据、查询、哈希盐和总过滤器预算。误差线为跨种子的样本标准差。</p><img src="figures/benchmarks.png" alt="不同内存预算、层级比例和未命中率下的实测访问次数">
-<h2>理论与实测核对</h2><p>独立未命中探测集用于测量各层误报率，再求和。整数哈希数量模型与连续分配模型分别保存在 CSV 中。</p><img class="half" src="figures/model_check.png" alt="模型与实测比较">
+{level_section}
+<h2>理论与实测核对</h2><p>对完整的未命中键集合逐层测量误报率，再求和。混合负载的未命中查询取自其中。整数哈希数量模型与连续分配模型分别保存在 CSV 中。</p><img class="half" src="figures/model_check.png" alt="模型与实测比较">
 <h2>参数搜索：仅模型预测</h2><p>枚举合并策略、T 和缓冲区比例；展示给定网格内的最低加权成本。不是全设计空间的最优性证明。调优内存预算仅包含 buffer 和 filters；命中成本按最深 run 的保守位置估计。</p><img class="half" src="figures/parameter_search.png" alt="不同写比例下的理论最优网格配置">
 <div class="scroll"><table><tr><th>写比例</th><th>分配</th><th>合并策略</th><th>T</th><th>缓冲区比例</th><th>层数</th><th>预测成本</th></tr>{table}</table></div>
 <h2>数据与来源</h2><p><a href="experiments.csv">逐次实验 CSV</a> · <a href="levels.csv">逐层过滤器 CSV</a> · <a href="summary.csv">均值与标准差</a> · <a href="model_search.csv">全部模型候选</a> · <a href="config.json">配置</a> · <a href="metadata.json">环境和代码指纹</a></p>

@@ -17,7 +17,8 @@ __pycache__/
 .env.*
 !.env.example
 
-# Keep the two existing reproducibility runs; ignore future runs by default
+# Keep documented runs and the delivery snapshot; ignore new runs by default
 /results/*
 !/results/demo/
 !/results/migration_check/
+!/results/final/

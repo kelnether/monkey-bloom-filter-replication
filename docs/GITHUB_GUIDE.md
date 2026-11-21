@@ -2,7 +2,7 @@
 
 ## 1. 本项目如何放入 Git
 
-主项目记录源码、文档、配置、测试、依赖清单及已有的 `results/demo`、`results/migration_check` 两份运行产物。两份结果是同配置的重复验证，不能当作不同研究设计。
+主项目记录源码、文档、配置、测试、依赖清单及 `results/demo`、`results/migration_check`、`results/final` 三份运行产物。这三个目录记录同一默认配置的重复运行，当前交付使用 `results/final`。
 
 `.venv`、IDE 配置、Python 缓存、macOS 元数据和后续新结果目录默认忽略。新增正式实验结果时，先核对体积和内容，再修改 `.gitignore` 中的结果目录白名单。
 

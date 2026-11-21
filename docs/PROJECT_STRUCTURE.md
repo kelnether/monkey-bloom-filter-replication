@@ -30,7 +30,8 @@
 │   └── test_core.py
 ├── results/
 │   ├── demo/                     # 初始实验
-│   └── migration_check/          # 已有迁移验证实验
+│   ├── migration_check/          # 已有迁移验证实验
+│   └── final/                    # 交付复跑与层数图
 ├── vendor/
 │   └── predictive-lsm-trees/     # 保留上游目录与 Git 版本信息
 ├── THIRD_PARTY.md
@@ -97,6 +98,7 @@ results/<run_name>/
 ├── best_configs.json            # 网格内最优项
 ├── figures/
 │   ├── benchmarks.png / .svg
+│   ├── level_count.png / .svg    # 当配置比较多个层数时生成
 │   ├── model_check.png / .svg
 │   └── parameter_search.png / .svg
 └── report.html
@@ -106,6 +108,6 @@ CSV 中 `measured_blocks`、`measured_false_positives` 等字段表示每次查�
 
 ## 5. 可追加但尚未实现的工作
 
-第一优先级：给层数变化结果增加专门图表，并补充公式与代码的对照记录。之后可在独立模块增加附录 C 分配器或偏斜查询生成器；确认实现后再更新本文件。无需为可选扩展创建空目录或把它们计入当前交付范围。
+已完成的层数图及分析见[结果与交付核对](RESULTS.md)。后续可补充公式与代码的对照记录，并按课程范围考虑附录 C 分配器或偏斜查询生成器。
 
 [返回 README](../README.md) · [查看研究计划](../README.md#研究问题与可检验预期)
