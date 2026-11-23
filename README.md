@@ -1,6 +1,6 @@
 # Monkey: Optimizing Bloom Filter Memory Allocation
 
-**DSC5003 · Track 2 · Python 核心算法复现**
+**DSC5003 · Track 2 · Python 核心算法复现: DENG Tianyu; XIA Tianquan; ZHANG Yue; LI Wenhao; ZHAO Yining**
 
 在相同 Bloom filter 内存预算下，比较统一 bits/key 和 Monkey 分层分配，观察误报率、逻辑页访问次数及成本模型预测的变化。主复现论文为 [Monkey: Optimal Navigable Key-Value Store（SIGMOD 2017）](https://doi.org/10.1145/3035918.3064054)。
 
@@ -264,7 +264,3 @@ E1–E4 去重后为 11 个场景 × 3 个种子 × 2 种分配策略，共 66 �
 可选扩展包括非几何层大小和偏斜查询。Mnemosyne 的动态统计维护与在线调优可作为后续方向。[Mnemosyne 原文](https://cs-people.bu.edu/mathan/publications/pacmmod25-zhu.pdf)
 
 主要风险及处理：数据库基础不足时先手工跟踪一次查询；模型偏差时检查整数 k、字节取整和样本数；Python 运行时间受实现影响时以逻辑访问为主要指标；范围过大时优先完成 E1–E4 和一个可解释的模型搜索。论文阅读、第三方代码和现有辅助原型的贡献应据实区分。
-
-## 开始协作
-
-所有人先读 Monkey；再按工作包阅读相关论文，见 [学习指南](docs/TEAM_GUIDE.md)。不要把运行第三方代码写成独立实现，也不要把模型预测写成系统实测。报告中保留算法来源、配置、随机种子和贡献记录；任何不符合预期的结果都值得检查并解释。
