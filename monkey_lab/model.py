@@ -7,7 +7,7 @@ Memory budget in this module covers buffer + filters, excluding fence pointers.
 import math
 
 from .allocation import allocate, model_sum, fpr
-from .upstream import geometric_sizes
+from .layout import geometric_sizes
 
 
 def cost_model(*, entries, entry_bytes, memory_bytes, buffer_fraction, ratio,

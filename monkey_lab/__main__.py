@@ -8,7 +8,7 @@ def main():
     sub = parser.add_subparsers(dest='command',required=True)
     run = sub.add_parser('run',help='run paired experiments and model grid search')
     run.add_argument('--config',type=Path,default=Path('configs/default.json'))
-    run.add_argument('--out',type=Path,default=Path('results/demo'))
+    run.add_argument('--out', type=Path, required=True, help='new or empty results directory')
     run.add_argument('--no-plots',action='store_true')
     plot = sub.add_parser('plot',help='plot existing results without rerunning experiments')
     plot.add_argument('--out',type=Path,required=True)

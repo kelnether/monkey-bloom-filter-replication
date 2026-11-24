@@ -1,3 +1,0 @@
-[submodule "vendor/predictive-lsm-trees"]
-	path = vendor/predictive-lsm-trees
-	url = https://github.com/fiidalgo/predictive-lsm-trees.git

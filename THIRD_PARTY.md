@@ -8,11 +8,11 @@ The replication draws on the allocation objective in Section 4.1, the cost model
 
 ## Reference implementation
 
-The project pins [predictive-lsm-trees](https://github.com/fiidalgo/predictive-lsm-trees) as a Git submodule at `vendor/predictive-lsm-trees`. The reference commit is `495e71a94559a845c76019740341745900a87666`. The upstream source is preserved at that commit, and [upstream_manifest.json](upstream_manifest.json) records SHA-256 fingerprints for eight files.
+The [predictive-lsm-trees reference source](https://github.com/fiidalgo/predictive-lsm-trees/tree/495e71a94559a845c76019740341745900a87666) informed several interfaces and the lookup organization. Its reference commit is `495e71a94559a845c76019740341745900a87666`. [upstream_manifest.json](upstream_manifest.json) records SHA-256 fingerprints for eight upstream files.
 
 | Upstream file | Use in this project |
 | --- | --- |
-| `lsm/utils.py` | `monkey_lab/upstream.py` directly loads `calculate_level_capacity` to compute geometric layer weights. |
+| `lsm/utils.py` | The archived runs called `calculate_level_capacity` through a Git submodule. The current [layout module](monkey_lab/layout.py) calculates geometric weights directly as powers of the size ratio. |
 | `lsm/bloom.py` | The `BloomFilter` API informed `add`, `might_contain`, and `get_size_bytes`. The storage, hashing, and byte budget are implemented locally. |
 | `lsm/traditional.py` | Informed the static level's lookup ordering and early exit. |
 | `lsm/run.py` | Informed the run and page-minimum-key index. The local implementation counts accesses to in-memory pages. |
@@ -22,6 +22,6 @@ The project pins [predictive-lsm-trees](https://github.com/fiidalgo/predictive-l
 1. The upstream Bloom filter uses a Python Boolean list and reports its ideal packed size. This project stores individual bits in a `bytearray` and reports the payload bytes.
 2. Upstream target false-positive rates grow by a factor of ten with a cap of 0.5. Here, the allocation uses each run's key count and a fixed global byte budget, including zero-byte filters.
 3. Some upstream reads deserialize an entire run. This project keeps pages in memory and counts logical page accesses.
-4. The upstream project also contains a classifier, learned filters, dynamic merging, and persistence. This experiment uses the capacity helper and the static layout described above.
+4. The upstream project also contains a classifier, learned filters, dynamic merging, and persistence. The local benchmark uses a static layout with prebuilt levels and pages.
 
-The upstream README links to an MIT License, but the pinned upstream tree contains no separate `LICENSE` file. The original upstream reference and revision are recorded here for attribution.
+The Git submodule is available in the [historical repository snapshot](https://github.com/kelnether/monkey-bloom-filter-replication/tree/db067a223df46f6e797b6de96e4a757c78a2d656). The archived metadata retains the upstream commit used for those runs. Current runs record the hashes of the local Python sources. At the reference commit, the upstream README links to an MIT License and the tree has no separate `LICENSE` file.

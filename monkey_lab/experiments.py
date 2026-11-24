@@ -6,16 +6,15 @@ import math
 import platform
 import random
 import statistics
-import subprocess
 import sys
 import time
 from collections import defaultdict
 from pathlib import Path
 
 from .allocation import model_sum
+from .layout import geometric_sizes
 from .model import search_parameters
 from .store import StaticLSM
-from .upstream import ROOT, geometric_sizes
 
 
 def workload(total, sizes, query_count, miss_fraction, seed):
@@ -186,12 +185,10 @@ def run_all(config_path, output):
     csv_write(output/'summary.csv', summary)
     csv_write(output/'model_search.csv', costs)
     (output/'best_configs.json').write_text(json.dumps(best,indent=2)+'\n')
-    upstream = ROOT/'vendor/predictive-lsm-trees'
-    commit = subprocess.run(['git','-C',str(upstream),'rev-parse','HEAD'],capture_output=True,text=True)
+    source = Path(__file__).resolve().parent
     metadata = {'python':sys.version,'platform':platform.platform(),'machine':platform.machine(),
-                'upstream_commit':commit.stdout.strip(),
                 'core_file_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest()
-                                    for p in sorted((ROOT/'monkey_lab').glob('*.py'))},
+                                    for p in sorted(source.glob('*.py'))},
                 'measurement':'in-memory logical block probes, not physical I/O',
                 'memory':'filter bytearray payload only; excludes data and Python object overhead'}
     (output/'metadata.json').write_text(json.dumps(metadata,indent=2)+'\n')
