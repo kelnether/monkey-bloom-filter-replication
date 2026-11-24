@@ -76,21 +76,22 @@ def make_report(directory):
     level_section = ''
     if save_access_chart('levels', 'Effect of number of levels', 'Number of levels', 'level_count'):
         level_section = (
-            '<h2>层数对查询的影响</h2>'
-            f'<p>只改变层数。固定键数 {base["entries"]:,}、层大小比例 T={base["ratio"]}、'
-            f'平均 {base["bits_per_key"]} bits/key 和未命中比例 {base["miss_fraction"]:.0%}。'
-            '每个点为随机种子间的均值，误差线为一个样本标准差。</p>'
-            '<img class="half" src="figures/level_count.png" alt="各分配策略随层数变化的平均逻辑页访问数">'
+            '<h2>Effect of level count</h2>'
+            f'<p>The sweep varies the number of levels while holding the key count at {base["entries"]:,}, '
+            f'the level-size ratio at T={base["ratio"]}, the budget at '
+            f'{base["bits_per_key"]} bits per key, and the miss fraction at {base["miss_fraction"]:.0%}. '
+            'Points are cross-seed means. Error bars show one sample standard deviation.</p>'
+            '<img class="half" src="figures/level_count.png" alt="Mean logical page accesses by strategy and level count">'
         )
 
     query_section = ''
     if 'queries' in rows[0] and save_access_chart(
             'queries', 'Fixed data | effect of query count', 'Unsuccessful queries per seed', 'query_count'):
         query_section = (
-            '<h2>固定数据的查询量对照</h2>'
-            '<p>同一个种子下固定键、层布局和哈希盐。较短的查询列表是完整列表的前缀。'
-            '误差线为不同种子的样本标准差。</p>'
-            '<img class="half" src="figures/query_count.png" alt="固定数据下不同查询量的平均逻辑页访问数">'
+            '<h2>Query-count comparison on fixed data</h2>'
+            '<p>Within each seed, the keys, level layout, and hash salts are fixed. The shorter query sequence is a prefix of the full sequence. '
+            'Error bars show one sample standard deviation across seeds.</p>'
+            '<img class="half" src="figures/query_count.png" alt="Mean logical page accesses by query count on fixed data">'
         )
 
     fig,ax = plt.subplots(figsize=(7.5,4.8),layout='constrained')
@@ -125,23 +126,23 @@ def make_report(directory):
     improvement=(baseline-optimized)/baseline if baseline else 0
     table=''.join('<tr>'+''.join(f'<td>{html.escape(str(r[k]) if k!="theta" else f"{r[k]:.4f}")}</td>'
                                 for k in ['write_fraction','strategy','policy','ratio','buffer_fraction','levels','theta'])+'</tr>' for r in best)
-    report=f'''<!doctype html><html lang="zh-CN"><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Monkey 实验报告</title>
+    report=f'''<!doctype html><html lang="en"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Monkey experiment report</title>
 <style>body{{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#17283c;background:#f8fafc;margin:0}}main{{max-width:1120px;margin:auto;padding:36px 24px}}h1{{font-size:34px;margin-bottom:8px}}h2{{margin-top:32px}}.cards{{display:flex;gap:16px;flex-wrap:wrap}}.card{{background:white;border:1px solid #dce4ed;border-radius:12px;padding:18px;flex:1;min-width:180px}}strong.number{{display:block;font-size:30px;color:#087e8b}}img{{width:100%;background:white;border-radius:12px}}.half{{max-width:750px}}table{{border-collapse:collapse;background:white;width:100%}}th,td{{padding:9px;border-bottom:1px solid #dce4ed;text-align:left}}.scroll{{overflow:auto}}a{{color:#087e8b}}.note{{border-left:4px solid #087e8b;padding:12px 18px;background:#eaf5f5}}code{{background:#e8edf2;padding:2px 5px}}</style>
-<main><p>DSC5003 · Python / macOS · 最小可行系统</p><h1>Monkey：固定内存预算下的过滤器分配</h1>
-<p>真实 Bloom filter · 静态多层数据 · 可重现对照实验 · 成本模型参数搜索</p>
-<div class="cards"><div class="card">基线平均访问<strong class="number">{baseline:.5f}</strong>逻辑数据块 / 查询</div>
-<div class="card">Monkey 平均访问<strong class="number">{optimized:.5f}</strong>逻辑数据块 / 查询</div>
-<div class="card">本次基础场景减少<strong class="number">{improvement:.1%}</strong>相对统一 bits/key</div></div>
-<p>基础场景：{base['entries']:,} 个键，{base['levels']} 层，T={base['ratio']}，平均 {base['bits_per_key']} bits/key，每个种子 {base['queries']:,} 次查询，未命中比例 {base['miss_fraction']:.0%}。随机种子：{html.escape(str(config['seeds']))}。</p>
-<p class="note">实测对象为内存中的静态数据布局和真实过滤器，指标为逻辑块访问数和过滤器位数组载荷。参数搜索使用理论成本。monkey 通过二分求解连续优化目标；monkey_appendix_c 在启用时使用附录 C 的迭代转移。</p>
-<h2>对照实验</h2><p>每个种子的各策略共享数据、查询、哈希盐和总过滤器预算。误差线为跨种子的样本标准差。</p><img src="figures/benchmarks.png" alt="不同内存预算、层级比例和未命中率下的实测访问次数">
+<main><p>DSC5003 · Python replication</p><h1>Monkey filter allocation under a fixed memory budget</h1>
+<p>Packed Bloom filters · Static levels · Paired experiments · Analytical parameter search</p>
+<div class="cards"><div class="card">Uniform allocation<strong class="number">{baseline:.5f}</strong>logical page accesses per query</div>
+<div class="card">Monkey allocation<strong class="number">{optimized:.5f}</strong>logical page accesses per query</div>
+<div class="card">Base-case reduction<strong class="number">{improvement:.1%}</strong>relative to uniform bits per key</div></div>
+<p>Base case with {base['entries']:,} keys, {base['levels']} levels, T={base['ratio']}, {base['bits_per_key']} bits per key, {base['queries']:,} queries per seed, and a miss fraction of {base['miss_fraction']:.0%}. Seeds used were {html.escape(str(config['seeds']))}.</p>
+<p class="note">The experiments run real Bloom filters on static data in memory. Measurements cover logical page accesses and filter bytearray payload. The parameter search uses analytical costs. The monkey strategy solves the continuous objective by bisection. When enabled, monkey_appendix_c uses the iterative transfers described in Appendix C.</p>
+<h2>Paired experiments</h2><p>Within each seed, strategies share data, queries, hash salts, and total filter budget. Error bars show one sample standard deviation across seeds.</p><img src="figures/benchmarks.png" alt="Measured page accesses across filter budgets, level-size ratios, and miss fractions">
 {level_section}
 {query_section}
-<h2>理论与实测核对</h2><p>对完整的未命中键集合逐层测量误报率，再求和。混合负载的未命中查询取自其中。整数哈希数量模型与连续分配模型分别保存在 CSV 中。</p><img class="half" src="figures/model_check.png" alt="模型与实测比较">
-<h2>参数搜索：仅模型预测</h2><p>枚举合并策略、T 和缓冲区比例；展示给定网格内的最低加权成本。不是全设计空间的最优性证明。调优内存预算仅包含 buffer 和 filters；命中成本按最深 run 的保守位置估计。</p><img class="half" src="figures/parameter_search.png" alt="不同写比例下的理论最优网格配置">
-<div class="scroll"><table><tr><th>写比例</th><th>分配</th><th>合并策略</th><th>T</th><th>缓冲区比例</th><th>层数</th><th>预测成本</th></tr>{table}</table></div>
-<h2>数据与来源</h2><p><a href="experiments.csv">逐次实验 CSV</a> · <a href="levels.csv">逐层过滤器 CSV</a> · <a href="summary.csv">均值与标准差</a> · <a href="model_search.csv">全部模型候选</a> · <a href="config.json">配置</a> · <a href="metadata.json">环境和代码指纹</a></p>
-<p>依据 Monkey（SIGMOD 2017），参考并改造 <a href="https://github.com/fiidalgo/predictive-lsm-trees">predictive-lsm-trees</a> 的 BloomFilter / Run / Level 组织方式，并直接复用其层容量工具函数。源码归属与改动见项目 THIRD_PARTY.md。</p></main></html>'''
+<h2>Measurements and model predictions</h2><p>The measured miss cost sums per-level false-positive rates over the full set of absent keys. Mixed workloads draw their misses from that set. The CSV includes both the integer-hash-count and continuous models.</p><img class="half" src="figures/model_check.png" alt="Measured and predicted page accesses">
+<h2>Analytical parameter search</h2><p>The grid enumerates merge policies, level-size ratios, and buffer shares. It reports the lowest predicted weighted cost among those candidates. The tuning budget covers the buffer and filters. A successful lookup is modeled at the deepest run.</p><img class="half" src="figures/parameter_search.png" alt="Lowest predicted cost on the grid by write fraction">
+<div class="scroll"><table><tr><th>Write fraction</th><th>Allocation</th><th>Merge policy</th><th>T</th><th>Buffer share</th><th>Levels</th><th>Predicted cost</th></tr>{table}</table></div>
+<h2>Data and sources</h2><p><a href="experiments.csv">Per-run measurements</a> · <a href="levels.csv">Per-level filter data</a> · <a href="summary.csv">Means and standard deviations</a> · <a href="model_search.csv">Analytical candidates</a> · <a href="config.json">Configuration</a> · <a href="metadata.json">Environment and source hashes</a></p>
+<p>Based on Monkey (SIGMOD 2017). The project adapted the BloomFilter, Run, and Level organization from <a href="https://github.com/fiidalgo/predictive-lsm-trees">predictive-lsm-trees</a> and reuses its level-capacity helper. See THIRD_PARTY.md for attribution and implementation details.</p></main></html>'''
     (directory/'report.html').write_text(report,encoding='utf-8')
     return directory/'report.html'

@@ -1,266 +1,154 @@
 # Monkey: Optimizing Bloom Filter Memory Allocation
 
-**DSC5003 · Track 2 · Python 核心算法复现: DENG Tianyu; XIA Tianquan; ZHANG Yue; LI Wenhao; ZHAO Yining**
+DSC5003 · Track 2: Research Paper Replication
 
-在相同 Bloom filter 内存预算下，比较统一 bits/key 和 Monkey 分层分配，观察误报率、逻辑页访问次数及成本模型预测的变化。主复现论文为 [Monkey: Optimal Navigable Key-Value Store（SIGMOD 2017）](https://doi.org/10.1145/3035918.3064054)。
+DENG Tianyu, XIA Tianquan, ZHANG Yue, LI Wenhao, and ZHAO Yining
 
-本项目已有探索性原型。小组接下来的工作是理解、审阅、完善并形成可重复的实验结论。所有静态查询在内存中完成，逻辑访问数不代表真实 SSD 延迟。
+We reproduced the Bloom filter allocation method from [Monkey: Optimal Navigable Key-Value Store](https://doi.org/10.1145/3035918.3064054) in a static Python implementation of a log-structured merge tree (LSM-tree). With 20,000 keys, four levels, a level-size ratio of 4, and a 12,500-byte filter budget, Monkey reduced the mean number of logical page accesses per unsuccessful lookup from **0.36978 to 0.18668**, a **49.5% reduction** across ten seeds. [Multi-seed results](results/robustness_seeds/summary.csv)
 
-## 小组从这里开始
+[Run the experiments](#run-the-experiments) · [Method](#method) · [Results](#results) · [References](#references) · [中文导读](#chinese-summary)
 
-| 需要做什么 | 阅读入口 |
-|---|---|
-| 了解选题、研究问题和实验计划 | 本文的[项目简介](#项目简介)、[研究问题](#研究问题与可检验预期)和[实验方案](#实验方案) |
-| 查看交付实验、结果解释和复跑记录 | [实验报告](results/final/report.html) · [结果与交付核对](docs/RESULTS.md) |
-| 查看多种子、查询量与附录 C 对照 | [扩展实验与运行方法](docs/ROBUSTNESS.md) |
-| 找到模块、接口和数据流 | [项目文件结构](docs/PROJECT_STRUCTURE.md) |
-| 上传 GitHub、获取项目与日常协作 | [GitHub 操作指南](docs/GITHUB_GUIDE.md) |
-| 分工、补基础、准备组会 | [小组学习与协作指南](docs/TEAM_GUIDE.md) |
-| 阅读五篇论文和类似系统 | [参考文献与用途](docs/REFERENCES.md) |
-| 区分论文、第三方代码和本地改写 | [来源与修改说明](THIRD_PARTY.md) |
-| 查阅此次整理前的说明 | [原 README 存档](docs/archive/README_before_2026-11-07.md) |
+## Run the experiments
 
-建议首次组会：先读本文的项目简介、研究问题和方法说明，运行测试，打开已有报告，然后每人跟踪一次未命中查询经过的代码。项目规划统一维护在本 README，供小组沟通和实施使用。
-
-## 项目简介
-
-**Track:** Track 2 — Research Paper Replication
-
-**Title:** Monkey: Optimizing Bloom Filter Memory Allocation
-
-**Brief description of content to be covered:**
-
-We will replicate the core Bloom filter memory allocation ideas of *Monkey: Optimal Navigable Key-Value Store* (SIGMOD 2017). Our project asks whether allocating a fixed filter memory budget non-uniformly across LSM-tree levels reduces false positives and unnecessary data accesses compared with uniform bits-per-key allocation. Using Python, we will implement packed Bloom filters, memory allocation algorithms, and static multi-level sorted datasets. We will conduct controlled experiments varying filter memory, level-size ratio, number of levels, and the fraction of unsuccessful lookups. Evaluation will cover per-level false-positive rates, average logical block accesses, correctness, and agreement between analytical predictions and measurements. We will also explore a finite parameter grid using an analytical cost model. Deliverables include source code, test scripts, synthetic datasets, evaluation code, and a reproducible report. The initial scope focuses on core algorithms and static experiments; dynamic compaction and physical disk performance are outside this scope.
-
-**References:** Monkey [1] is the replication target. Mnemosyne [2] and Dostoevsky [3] provide follow-up research; bLSM [4] and the RUM Conjecture [5] provide background. Full bibliographic entries and verified links are in [References](docs/REFERENCES.md).
-
-**Similar applications / implementations:** [LevelDB](https://github.com/google/leveldb) and [RocksDB](https://github.com/meta/rocksdb) are relevant key-value storage systems. The third-party [predictive-lsm-trees](https://github.com/fiidalgo/predictive-lsm-trees) repository supplies implementation references; it is not Monkey's official artifact. Reuse is documented in [THIRD_PARTY.md](THIRD_PARTY.md).
-
-## 选题与切入角度
-
-中文题目：**Monkey：面向 LSM-tree 的 Bloom Filter 内存分配优化与实验复现**。
-
-主问题是：总过滤器空间相同，是否应该为每层每个键分配相同的位数？我们比较统一 bits/key 与依据各层键数量优化的分配策略，解释差异来自哪里，而不仅仅展示一条性能曲线。
-
-将最小实验限定为静态数据、每层一个有序 run、点查询。查询先检查过滤器；阳性时访问对应逻辑页，找到键即停止。所有键与页面驻留内存，因此“访问次数”是受控的逻辑指标。这个范围适合 Python，也便于组员从 Bloom filter、概率和多层查询逐步理解论文。
-
-## 研究问题与可检验预期
-
-| 编号 | 研究问题 | 方法与判断依据 |
-|---|---|---|
-| RQ1 | 固定空间下，非均匀分配是否减少未命中查询访问？ | 同一数据、查询与哈希盐配对比较两种策略 |
-| RQ2 | 收益如何随内存、层数、层大小比例变化？ | 一次改变一个变量，报告多种子的均值和标准差 |
-| RQ3 | 连续误报模型能否解释真实位数组过滤器的行为？ | 分别比较连续近似、整数哈希数近似与实测；分析取整和抽样误差 |
-| RQ4 | 成功查询比例变化时，优化收益是否保持？ | 测试全部未命中、混合、全部命中，考虑提前结束的影响 |
-| RQ5 | 成本模型会为不同读写比例选择什么参数？ | 在显式网格内比较层大小比例、buffer 比例、leveling/tiering |
-
-预期 Monkey 在其优化目标下通常减少无效访问，但不预设固定提升百分比。零内存场景应退化到所有过滤器均为阳性；高命中率、较小预算及离散取整可能改变收益。观察到差异或优势不显著也应完整报告。
-
-## 方法与复现对应关系
-
-设第 i 层有 n_i 个键，过滤器使用 m_i 位、k_i 个哈希位置。单层近似误报率为：
-
-```text
-p_i ≈ (1 - exp(-k_i * n_i / m_i)) ^ k_i
-采用连续最优哈希数近似时：p_i ≈ exp(-(ln 2)^2 * m_i / n_i)
-未命中查询期望逻辑访问数：R ≈ Σ p_i
-目标：min Σ p_i，约束 Σ m_i = M，m_i ≥ 0
-```
-
-上述公式需 m_i > 0；m_i = 0 时单独定义 p_i = 1。内存约束在实现中按完整字节执行。基线的空间与 n_i 成比例，含义是每键相同位数，不是每层相同字节。
-
-| 论文思想 | 本项目实现／计划 | 复现边界 |
-|---|---|---|
-| 第 4.1 节及附录 B：跨层误报率优化 | KKT 连续解数值求解，再按字节分配余量 | 默认使用 `monkey` 策略 |
-| 附录 C：过滤器内存迭代转移 | `monkey_appendix_c` 按步长尝试在过滤器间搬移位数 | 可在静态对照中启用；两种 Monkey 求解器共用整字节处理 |
-| 多层查询与过滤器 | 真实位打包过滤器、静态有序页、逻辑访问计数 | 实测布局为每层一个 run；不实现后台合并 |
-| 第 4.2 节成本分析 | 有限层误报率求和、最深位置命中成本、更新和范围成本近似 | 更新／范围是模型预测；默认搜索的范围查询权重为 0 |
-| 参数调优 | 枚举有限网格并保存所有候选 | 并非附录 D 搜索算法，不声称全设计空间最优 |
-| 实验验证 | 均匀基线、多个种子、真实答案校验、图表 | 不复现原论文 LevelDB 端到端延迟数字 |
-
-理论依据见 [Monkey 原文](https://cs-people.bu.edu/mathan/publications/sigmod17-dayan.pdf)。上表中的实现选择是本项目设计，不是论文原作者的实现声明。
-
-## 当前实现及边界
-
-| 功能 | 当前实现 |
-|---|---|
-| Bloom filter | bytearray 位打包、确定性哈希、整数哈希数、零空间处理 |
-| 分配算法 | `uniform` 统一 bits/key、`monkey` 二分求解、可选 `monkey_appendix_c` 迭代转移 |
-| 静态查询 | 每层一个有序 run，页边界索引，命中后提前结束 |
-| 实验 | 改变预算、T、层数、未命中比例；配对种子和数据 |
-| 成本与搜索 | 理论 leveling/tiering 成本，有限网格枚举 |
-| 结果 | JSON 数据、CSV、PNG/SVG、HTML、源码指纹 |
-
-实验范围是静态内存布局、点查询和过滤器载荷。参数调优使用理论成本与有限网格，附录 C 用于静态分配策略对照。
-
-## 环境与首次安装
-
-推荐 Python 3.12，以贴近原型验证环境；核心模块使用标准库，绘图需要 Matplotlib。Mac 无需 GPU、Docker 或独立数据库服务。
-
-组员从 GitHub 获取项目时，需同时获取固定版本的上游子模块。将下面的 `YOUR_REPOSITORY_URL` 替换为本项目仓库地址：
+Use Python 3.12 and clone with submodules. The project imports a level-capacity helper directly from the pinned upstream checkout. [Third-party code and provenance](THIRD_PARTY.md)
 
 ```bash
-git clone --recurse-submodules YOUR_REPOSITORY_URL
-```
-
-若已使用普通 `git clone`，进入项目根目录后执行 `git submodule update --init --recursive`。不要运行 `--remote`，以免将参考代码更新到不同于本项目记录的版本。GitHub 的 Download ZIP 不包含子模块源码；推荐使用 Git 克隆。
-
-组员获取整个项目文件夹（包括 `vendor/`）后，在项目根目录执行：
-
-```bash
+git clone --recurse-submodules https://github.com/kelnether/monkey-bloom-filter-replication.git
+cd monkey-bloom-filter-replication
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-lock.txt
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-`requirements-lock.txt` 固定既有环境版本；若因 Python／平台不匹配安装失败，先核对版本，可使用 `requirements.txt` 安装兼容版本并记录实际依赖。不要复制其他电脑的 `.venv`。
-
-当前主项目位置为 `/Users/kevinkel/PycharmProjects/5003test`。这里已存在 `.venv`，无需重复创建；在 PyCharm 打开该目录，解释器选择 `.venv/bin/python`，Working directory 设为项目根目录。
-
-若 vendor 缺失，先恢复固定版本：
+For an existing checkout, run `git submodule update --init --recursive` before testing. GitHub's source ZIP omits submodule contents. In PyCharm, open the repository root, select `.venv/bin/python` as the interpreter, and use the repository root as the working directory. The reference runs used Python 3.12.6 and Matplotlib 3.11.2 on macOS ARM64.
 
 ```bash
-git clone https://github.com/fiidalgo/predictive-lsm-trees.git vendor/predictive-lsm-trees
-git -C vendor/predictive-lsm-trees checkout 495e71a94559a845c76019740341745900a87666
+run_dir="results/recheck_$(date +%Y%m%d_%H%M%S)"
+for config in default robustness_seeds robustness_queries; do
+  .venv/bin/python -m monkey_lab run \
+    --config "configs/$config.json" --out "$run_dir/$config"
+done
+open "$run_dir/default/report.html"
 ```
 
-它不是 Monkey 官方代码。本项目直接加载其中的容量函数，因此 vendor 不是可随意删除的资料目录。
+The output directory for each run must be new or empty. Add `--no-plots` to a `run` command to produce data and CSVs with the standard library. Use `.venv/bin/python -m monkey_lab plot --out "$run_dir/default"` to rebuild the plots and HTML from an existing run. The last line of the example opens the HTML on macOS. On other systems, open it in a browser.
 
-## 运行与查看结果
+## Method
 
-在项目根目录运行完整默认实验；输出使用带时间戳的新目录：
+Each level has one sorted run. A lookup first probes the run's packed Bloom filter. On a positive result, it uses the page boundary keys (fence pointers) to find one candidate page, then searches that page. A hit ends the lookup. A miss checks all levels, and every false positive adds one logical page access. The static benchmark uses the same layout, query sequence, hash salts, and total filter budget for each strategy within a seed.
 
-```bash
-run_dir="results/team_$(date +%Y%m%d_%H%M%S)"
-MPLCONFIGDIR="$PWD/.mplconfig" XDG_CACHE_HOME="$PWD/.cache" \
-  .venv/bin/python -m monkey_lab run --config configs/default.json --out "$run_dir"
-open "$run_dir/report.html"
-```
+For a run with `n` keys, `m` filter bits, and `k` hash positions per key, the false-positive rate is approximated by `(1 - exp(-k*n/m))^k`. Using the continuous optimal hash count gives `p = exp(-(ln 2)^2 * m/n)`. A zero-byte filter always passes the lookup, giving `p = 1`. The expected miss cost is the sum of the rates across runs, by linearity of expectation.
 
-`open` 是 macOS 命令；其他平台可直接用浏览器打开报告。相同 `--out` 非空时会拒绝覆盖，重复实验请换目录。
+- **Uniform allocation** gives each level the same bits per key, up to integer-byte rounding.
+- **Monkey bisection** minimizes the sum of the continuous false-positive rates under a fixed budget. At the optimum, funded runs have the same ratio `p/n`, so smaller runs receive more bits per key. The implementation rounds down to whole bytes and assigns residual bytes by marginal gain.
+- **Appendix C** starts with the bits in the first run and tries two-way transfers between pairs of runs. It retains a transfer when it improves the objective and leaves a positive donor allocation. After a full pass without an improvement, it halves the step down to one bit and then applies the shared whole-byte rule.
 
-只运行算法和 CSV（无需安装绘图依赖）：
+The filter uses a `bytearray`, deterministic SHAKE-256 hashes, and an integer hash count. Whole-byte rounding is part of this implementation. Its results need not equal the discrete optimum for arbitrary run sizes. These experiments count logical accesses to in-memory pages and bytes in the filter payload. [Allocation code](monkey_lab/allocation.py) · [Filter code](monkey_lab/bloom.py) · [Query path](monkey_lab/store.py)
 
-```bash
-python3 -m monkey_lab run --config configs/default.json --out results/core_only --no-plots
-```
+### Workloads
 
-已有结果重新绘图，不重新计算实验：
+The runs use seeded synthetic integer keys. The query labels follow membership in the saved key set. The default base case has 20,000 keys across four levels at ratio 4, five bits per key, up to 128 keys per page, and 5,000 unsuccessful lookups per seed. The default sweep changes one factor at a time and deduplicates identical cases.
 
-```bash
-MPLCONFIGDIR="$PWD/.mplconfig" XDG_CACHE_HOME="$PWD/.cache" \
-  .venv/bin/python -m monkey_lab plot --out results/demo
-```
+| Configuration | What changes | Seeds |
+| --- | --- | --- |
+| [Default](configs/default.json) | Budget of 0, 2, 5, 8, or 10 bits/key, level-size ratio of 2, 4, or 10, level count of 2, 4, or 6, and miss fraction of 0%, 50%, or 100% | 1–3 |
+| [Seed comparison](configs/robustness_seeds.json) | Two, four, and six levels at five bits/key, plus four levels at two bits/key. Includes the Appendix C allocator. | 1–10 |
+| [Query-count comparison](configs/robustness_queries.json) | 5,000 or 20,000 misses against the same data and filters within each seed | 1–3 |
 
-已有报告：[交付复跑](results/final/report.html) · [初始实验](results/demo/report.html) · [迁移验证实验](results/migration_check/report.html)。
+Per-level false-positive rates use the complete saved set of absent keys. Mixed workloads draw their misses from that set. Figures show a sample standard deviation across seeds. Relative reductions divide the difference between the two strategy means by the uniform mean.
 
-如遇本机 Python 证书链错误，可尝试使用系统证书，不要关闭 TLS 校验：
+## Results
 
-```bash
-.venv/bin/python -m pip install --cert /etc/ssl/cert.pem -r requirements-lock.txt
-```
+### Default benchmark
 
-## 配置：先只改一个变量
+Across three seeds, mean logical page accesses fell from **0.37387 to 0.18580** in the base case, a **50.3%** reduction. The ten-seed result at the top of this README uses the same base configuration with seven additional seeds. [Default summary](results/final/summary.csv) · [Experiment plots](results/final/report.html)
 
-入口：[configs/default.json](configs/default.json)。
+| Level | Keys | Uniform bytes | Monkey bytes | Uniform false-positive rate | Monkey false-positive rate |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 236 | 147 | 376 | 9.65% | 0.19% |
+| 2 | 942 | 589 | 1,160 | 9.21% | 0.76% |
+| 3 | 3,765 | 2,353 | 3,279 | 9.26% | 3.57% |
+| 4 | 15,057 | 9,411 | 7,685 | 9.26% | 14.06% |
 
-| 参数 | 默认值 | 含义 |
-|---|---:|---|
-| `entries` | 20000 | 静态各层总键数 |
-| `levels` | 4 | 层数，每层一个 run |
-| `ratio` | 4 | 层大小几何比例 T |
-| `bits_per_key` | 5 | 总过滤器位预算／总键数 |
-| `queries` | 5000 | 每场景、每种子的查询数 |
-| `miss_fraction` | 1.0 | 查询键不存在的比例 |
-| `entries_per_page` | 128 | 每个内存逻辑页最多存放的键数 |
-| `seeds` | [1,2,3] | 三次重复实验 |
+Monkey moves 1,726 bytes from the largest level to the three smaller levels. Their combined false-positive rate falls by about 23.61 percentage points, while the largest level's rate rises by 4.80 points. The net effect is about 0.18807 fewer logical page accesses per miss. A single lookup can trigger false positives at several levels. [Per-level records](results/final/levels.csv)
 
-`sweeps` 一次改变一个变量并去重：默认 11 场景 × 3 种子 × 2 策略 = 66 条实测记录。`model_search` 是独立的理论实验，具有自己的数据规模、总内存和参数网格；默认 144 个候选。正式实验前复制配置为新文件，不覆盖原始配置和旧结果。
+| Levels | Uniform mean ± SD | Monkey mean ± SD | Paired difference mean ± SD | Reduction |
+| ---: | ---: | ---: | ---: | ---: |
+| 2 | 0.18047 ± 0.00753 | 0.14133 ± 0.00605 | 0.03913 ± 0.01245 | 21.7% |
+| 4 | 0.37387 ± 0.00533 | 0.18580 ± 0.00193 | 0.18807 ± 0.00530 | 50.3% |
+| 6 | 0.55473 ± 0.00965 | 0.19480 ± 0.00100 | 0.35993 ± 0.01051 | 64.9% |
 
-## 实验方案
+The level-count sweep holds the key count, size ratio, filter bytes, and all-miss workload fixed. Each paired difference subtracts the Monkey value from the uniform value for the same seed. [Level-count plot](results/final/figures/level_count.png) · [Per-seed records](results/final/experiments.csv)
 
-以下实验以上述默认配置为起点。键范围在各层交错，所有插入键唯一；未命中键与插入集合不相交。
+- With no filter budget, a miss reads one page at each of the four levels. At 2, 5, 8, and 10 bits per key, the relative reductions were 49.1%, 50.3%, 50.4%, and 51.6%.
+- As the level-size ratio rose from 2 to 4 to 10, the reduction rose from 21.7% to 50.3% to 63.5%. At a larger ratio, the same extra byte provides more bits per key in the smaller levels.
+- At miss fractions of 0%, 50%, and 100%, the reductions were 17.5%, 25.1%, and 50.3%. A hit includes a read of the page containing the key and can skip later levels. [Budget, ratio, and miss-fraction plots](results/final/figures/benchmarks.png)
 
-| 实验 | 改变的变量 | 当前默认取值 | 主要输出 |
-|---|---|---|---|
-| E1 | 平均过滤器 bits/key | 0、2、5、8、10 | 总访问数、逐层 FPR、模型误差 |
-| E2 | 层大小比例 T | 2、4、10 | 非均匀分配的收益变化 |
-| E3 | 未命中比例 | 0、0.5、1 | 混合工作负载访问数 |
-| E4 | 层数 L | 2、4、6 | 固定总键数下的层数影响 |
-| E5 | 理论配置网格 | T=2/4/8/10；buffer 比例 0.05/0.2/0.5；两种合并策略 | 每种读写比例下的网格最优候选 |
+In the base case, the integer-hash-count model predicts **0.36800** accesses for uniform allocation and **0.18712** for Monkey. The absolute differences from measurement are about **0.00587** and **0.00132**, respectively. The formula approximates bit occupancy, while the benchmark probes the actual filters with 5,000 miss keys per seed. [Model comparison](results/final/figures/model_check.png)
 
-E1–E4 去重后为 11 个场景 × 3 个种子 × 2 种分配策略，共 66 条记录。E5 使用独立的模型数据规模与内存预算，默认共 144 个候选。E4 的层数曲线见[交付实验图](results/final/figures/level_count.png)。
+### Seed and query-count checks
 
-公平性要求：配对策略共享输入和查询、过滤器载荷总字节数相同、记录随机种子与源码指纹。逐层 FPR 使用完整未命中探测集计算；它在混合负载下不受提前停止影响，但不应宣称与未命中工作负载样本完全独立。
+The ten-seed runs use 5,000 misses per seed, 20,000 keys, and a level-size ratio of 4. The columns below report mean logical accesses per query.
 
-验收关注查询正确性、无漏判、总预算守恒、边界条件及模型与实测的差异。样本标准差描述种子间波动。多种子和固定数据的查询量结果见[扩展实验](docs/ROBUSTNESS.md)。
+| Levels | Bits/key | Uniform | Monkey bisection | Appendix C | Paired difference mean ± SD | Reduction |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2 | 5 | 0.18170 | 0.14586 | 0.14586 | 0.03584 ± 0.00980 | 19.7% |
+| 4 | 5 | 0.36978 | 0.18668 | 0.18668 | 0.18310 ± 0.00671 | 49.5% |
+| 6 | 5 | 0.55948 | 0.19254 | 0.19254 | 0.36694 ± 0.01741 | 65.6% |
+| 4 | 2 | 1.57348 | 0.79816 | 0.79816 | 0.77532 ± 0.03111 | 49.3% |
 
-## 怎样解释结果
+In the four-level, five-bit case, the paired difference was positive for every seed, ranging from 0.1712 to 0.1934. Both Monkey solvers assigned 376, 1,160, 3,279, and 7,685 bytes in the base case, with a continuous objective of about 0.18677. Their whole-byte allocations and measured access counts matched in all four tested configurations. [Seed-level records](results/robustness_seeds/experiments.csv) · [Per-level records](results/robustness_seeds/levels.csv)
 
-- `levels.csv`：每层键数、载荷字节、哈希数、实测与预测误报率。
-- `experiments.csv`：每次配对实验的平均逻辑页访问数、误报数、过滤器探测数与正确性。
-- `summary.csv`：跨种子的均值和样本标准差；标准差不等于置信区间。
-- `model_search.csv`、`best_configs.json`：全部理论候选和网格内最优参数。
-- `metadata.json`：运行环境、上游提交及本地源码指纹。
-- `datasets/`：真实使用的层数据、查询及未命中探测集。
-- `figures/`：预算／T／未命中比例、层数、预测与实测、参数搜索图。
+The query-count check keeps the data, per-level budget, hash salts, and hash counts fixed within each seed. Each short trial uses the first 5,000 queries of the corresponding 20,000-query trial. The samples share that prefix. The standard deviations describe variation across three seeds, including changes in data and filter salt.
 
-主要指标是每次查询的逻辑页访问数。未命中查询中，每次过滤器误报触发一次逻辑页访问；成功查询还包括找到结果的那次访问，并可能提前结束。`python_query_seconds` 仅作 Python 实现开销诊断。
+| Miss queries per seed | Uniform mean ± SD | Monkey mean ± SD | Reduction |
+| ---: | ---: | ---: | ---: |
+| 5,000 | 0.37260 ± 0.01226 | 0.18660 ± 0.00597 | 49.9% |
+| 20,000 | 0.36980 ± 0.00201 | 0.18703 ± 0.00520 | 49.4% |
 
-内存口径：静态过滤器预算只计算 bytearray 的位数组载荷，不含 Python 对象、数据和页索引；理论调参的总内存包含 buffer 与 filters，但仍不包含页索引。两种口径须在图注中区分。
+[Multi-seed report](results/robustness_seeds/report.html) · [Query-count plot](results/robustness_queries/figures/query_count.png) · [Query-count summary](results/robustness_queries/summary.csv)
 
-## 交付复跑结果
+### Analytical parameter search
 
-在 20,000 键／4 层／T=4／5 bits/key／全部未命中的基础场景中，两种策略均使用 12,500 字节过滤器载荷，三个种子的平均逻辑访问数分别为 0.37387（uniform）和 0.18580（monkey），降幅 50.3%。
+The model combines predictions for unsuccessful lookups, hits at the deepest run, range queries, and amortized updates. Its separate 128,000-byte budget covers the write buffer and filters, excluding fence pointers. The workload weights sum to one, and range queries have zero weight in the default search.
 
-2026-11-21 完整复跑后，66 条记录的非计时字段与历史迁移验证一致，14 项测试通过。查看[逐层解释和核对记录](docs/RESULTS.md)、[交付数据](results/final/summary.csv)及[历史启动检查](docs/STARTUP_CHECK.md)。
+The grid evaluates 144 candidates using 100,000 entries at 128 bytes each and 4,096-byte pages. It crosses level-size ratios of 2, 4, 8, and 10, buffer shares of 5%, 20%, and 50%, leveling and tiering, both default filter strategies, and three write fractions. For Monkey at 10% and 50% writes, the lowest predicted costs use leveling at ratio 2 with buffer shares of 5% and 20%, respectively. At 90% writes, the selected candidate uses tiering at ratio 8 with a 20% buffer share. The search uses the model and this finite grid. The benchmark itself runs static point lookups. [Cost model](monkey_lab/model.py) · [Candidate CSV](results/final/model_search.csv) · [Grid winners](results/final/best_configs.json)
 
-## 项目布局
+## Code and reproducibility
 
-```text
-5003test/
-├── README.md                 # 选题、研究计划、组员入口和运行方法
-├── docs/                     # 文件结构、文献、协作与历史说明
-├── configs/default.json      # 默认实验与成本搜索参数
-├── monkey_lab/               # Python 核心实现
-├── tests/test_core.py        # unittest 测试
-├── results/                  # 运行产物，每次独立子目录
-├── vendor/predictive-lsm-trees/ # 固定版本的参考代码
-├── THIRD_PARTY.md            # 复用和改写的对应关系
-├── upstream_manifest.json    # 上游文件指纹
-├── requirements.txt          # 绘图依赖范围
-└── requirements-lock.txt     # 已记录的确切版本
-```
+| File or directory | Role |
+| --- | --- |
+| [`monkey_lab/__main__.py`](monkey_lab/__main__.py) and [`experiments.py`](monkey_lab/experiments.py) | CLI, seeded workload generation, paired runs, correctness checks, and output files |
+| [`upstream.py`](monkey_lab/upstream.py) | Load the pinned capacity helper and compute integer level sizes |
+| [`allocation.py`](monkey_lab/allocation.py) and [`bloom.py`](monkey_lab/bloom.py) | Divide the budget, select the integer hash count, and store and probe filter bits |
+| [`store.py`](monkey_lab/store.py) | Search static runs and count filter probes, logical page accesses, and false positives |
+| [`model.py`](monkey_lab/model.py) and [`plotting.py`](monkey_lab/plotting.py) | Evaluate analytical costs and produce figures and HTML |
+| [`tests/test_core.py`](tests/test_core.py) | Test budget conservation, filters, lookup correctness, and reproducibility |
+| [`configs/`](configs/) | Experiment inputs and analytical grid settings |
+| [`results/`](results/) | Saved input snapshots, measurements, predictions, provenance, and figures |
+| [`vendor/predictive-lsm-trees/`](vendor/predictive-lsm-trees) | Pinned reference repository. The project reuses its capacity helper and adapts parts of its design. |
 
-## 交付物与当前状态
+Each run saves the exact input in `datasets/` and `config.json`. The main CSVs are `experiments.csv` for each scenario, seed, and strategy, `levels.csv` for per-level measurements, and `summary.csv` for means and sample standard deviations. `model_search.csv` and `best_configs.json` contain model estimates and the grid winners. `metadata.json` records the environment, pinned upstream revision, and source file SHA-256 fingerprints from the run. The saved HTML is a readable view of the CSVs and figures.
 
-仓库已有探索性原型，供组员学习、审阅与继续改进；项目启动不等于代码从零开始，也不等于正式研究已经完成。
+| Saved run | Strategy records | Dataset snapshots | Checked query executions |
+| --- | ---: | ---: | ---: |
+| [Default](results/final/report.html) | 66 | 33 | 330,000 |
+| [Seed comparison](results/robustness_seeds/report.html) | 120 | 40 | 600,000 |
+| [Query-count comparison](results/robustness_queries/report.html) | 12 | 6 | 150,000 |
+| **Total** | **198** | **79** | **1,080,000** |
 
-| 交付物 | 当前基础 | 下一步 |
-|---|---|---|
-| 核心源码 | Bloom filter、分配器、静态布局、成本模型均存在 | 逐模块核对论文依据，解释边界条件 |
-| 测试脚本 | 现有 unittest 测试 | 小组运行并审阅，新增功能再加必要测试 |
-| 数据与生成器 | 交付配置与 33 份配对数据快照 | 按 README 在组员机器复跑 |
-| 评估代码 | CSV、模型搜索、层数图和 HTML 交付报告 | 组员审阅结果与误差解释 |
-| 报告与演示 | README、结果说明与协作指南 | 将结果整合进课程报告，核对贡献及提交材料 |
+All checked query answers matched the saved workload labels, and the filters returned zero false negatives on inserted keys. All 16 unit tests passed. A clean-clone rerun reproduced the dataset hashes, non-timing experiment fields, model results, and PNG plots. Build and query timings vary with machine and load. `demo` and `migration_check` contain earlier default runs and are outside the totals above. [Default metadata](results/final/metadata.json) · [Seed comparison metadata](results/robustness_seeds/metadata.json) · [Query-count metadata](results/robustness_queries/metadata.json) · [Upstream fingerprints](upstream_manifest.json)
 
-既有输出是可行性证据，不将其提升幅度作为验收门槛。核心限制：无动态写入／删除／compaction、事务、持久化或物理磁盘测量；过滤器预算不含 Python 对象及数据集开销，成本模型中的 buffer+filters 预算也不含页索引。
+## References
 
-## 建议分工与阶段
+1. Niv Dayan, Manos Athanassoulis, and Stratos Idreos. 2017. *Monkey: Optimal Navigable Key-Value Store*. SIGMOD, 79–94. The replication uses the allocation objective in Section 4.1, the cost model in Section 4.2, and Appendices B and C. [DOI](https://doi.org/10.1145/3035918.3064054) · [Author PDF](https://cs-people.bu.edu/mathan/publications/sigmod17-dayan.pdf)
+2. Zichen Zhu, Yanpeng Wei, Ju Hyoung Mun, and Manos Athanassoulis. 2025. *Mnemosyne: Dynamic Workload-Aware BF Tuning via Accurate Statistics in LSM trees*. PACMMOD 3(3), Article 190 (SIGMOD 2025). Covers dynamic filter reallocation and access statistics. [DOI](https://doi.org/10.1145/3725327)
+3. Niv Dayan and Stratos Idreos. 2018. *Dostoevsky: Better Space-Time Trade-Offs for LSM-Tree Based Key-Value Stores via Adaptive Removal of Superfluous Merging*. SIGMOD, 505–520. Covers the effect of merge policy on read, update, and space costs. [DOI](https://doi.org/10.1145/3183713.3196927)
+4. Russell Sears and Raghu Ramakrishnan. 2012. *bLSM: A General Purpose Log Structured Merge Tree*. SIGMOD, 217–228. Background on LSM design and merge scheduling. [DOI](https://doi.org/10.1145/2213836.2213862)
+5. Manos Athanassoulis, Michael S. Kester, Lukas M. Maas, Radu Stoica, Stratos Idreos, Anastasia Ailamaki, and Mark Callaghan. 2016. *Designing Access Methods: The RUM Conjecture*. EDBT, 461–466. Frames the trade-offs among reads, updates, and memory or storage. [DOI](https://doi.org/10.5441/002/EDBT.2016.42)
 
-按四个工作包分工，人数不足时合并；每个工作包另设一名交叉审阅者，不预填组员身份。
+[LevelDB](https://github.com/google/leveldb) was the basis of the paper's system experiments. [RocksDB](https://github.com/meta/rocksdb) is a related LSM-based engine. See [THIRD_PARTY.md](THIRD_PARTY.md) for the pinned Python reference and the exact reuse in this project.
 
-| 工作包 | 负责内容 | 可检查产物 |
-|---|---|---|
-| A：理论与分配 | 论文推导、基线定义、分配器 | 公式到代码的对照说明 |
-| B：过滤器与数据 | 位数组、哈希、页面、查询路径 | 正确性与内存口径说明 |
-| C：实验与图表 | 配置、批量运行、统计、模型比较 | 可重复结果与图注 |
-| D：整合与写作 | 相关文献、报告、演示、复现说明 | 可交付材料与来源记录 |
+## Chinese summary
 
-建议四个阶段，按课程期限压缩或延长：第一阶段统一概念并运行原型；第二阶段审核算法与模型；第三阶段冻结配置并运行正式实验；第四阶段完成报告及互相演示。详见 [小组学习与协作指南](docs/TEAM_GUIDE.md)。
-
-## 可选扩展与主要风险
-
-可选扩展包括非几何层大小和偏斜查询。Mnemosyne 的动态统计维护与在线调优可作为后续方向。[Mnemosyne 原文](https://cs-people.bu.edu/mathan/publications/pacmmod25-zhu.pdf)
-
-主要风险及处理：数据库基础不足时先手工跟踪一次查询；模型偏差时检查整数 k、字节取整和样本数；Python 运行时间受实现影响时以逻辑访问为主要指标；范围过大时优先完成 E1–E4 和一个可解释的模型搜索。论文阅读、第三方代码和现有辅助原型的贡献应据实区分。
+本项目以 Python 复现 Monkey 的分层 Bloom filter 内存分配。固定过滤器预算时，十个种子的基础实验中，未命中查询的平均逻辑页访问数下降了 49.5%。[运行命令](#run-the-experiments) · [实验结果](#results)

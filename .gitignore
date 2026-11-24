@@ -24,3 +24,6 @@ __pycache__/
 !/results/final/
 !/results/robustness_seeds/
 !/results/robustness_queries/
+
+# Local project documentation
+/docs/
