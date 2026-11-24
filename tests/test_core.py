@@ -1,6 +1,8 @@
 import itertools
 import json
 import math
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,9 +10,9 @@ from pathlib import Path
 from monkey_lab.allocation import allocate, model_sum
 from monkey_lab.bloom import BloomFilter
 from monkey_lab.experiments import run_case, aggregate, build_cases
+from monkey_lab.layout import geometric_sizes
 from monkey_lab.model import cost_model, search_parameters
 from monkey_lab.store import Run, StaticLSM, QueryStats
-from monkey_lab.upstream import geometric_sizes, calculate_level_capacity
 
 
 class AllocationTests(unittest.TestCase):
@@ -50,8 +52,8 @@ class AllocationTests(unittest.TestCase):
         for sizes,budget in [([],1),([0],1),([1],-1),([1.5],1)]:
             with self.assertRaises(ValueError): allocate(sizes,budget)
 
-    def test_geometric_sizes_and_real_upstream_reuse(self):
-        self.assertEqual(calculate_level_capacity(3,2,4),48)
+    def test_geometric_sizes(self):
+        self.assertEqual(geometric_sizes(20000, 4, 4), [236, 942, 3765, 15057])
         for n,L,T in [(3,3,10),(111,3,10),(20000,6,4)]:
             sizes=geometric_sizes(n,L,T)
             self.assertEqual(sum(sizes),n)
@@ -92,6 +94,14 @@ class FilterAndStoreTests(unittest.TestCase):
 
 
 class ModelAndExperimentTests(unittest.TestCase):
+    def test_cli_requires_output_directory(self):
+        run = subprocess.run(
+            [sys.executable, '-m', 'monkey_lab', 'run', '--no-plots'],
+            cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+        )
+        self.assertEqual(run.returncode, 2)
+        self.assertIn('the following arguments are required: --out', run.stderr)
+
     def test_query_count_keeps_data_and_query_prefix_fixed(self):
         base = dict(entries=120, levels=3, ratio=3, bits_per_key=5,
                     miss_fraction=1, entries_per_page=8)
